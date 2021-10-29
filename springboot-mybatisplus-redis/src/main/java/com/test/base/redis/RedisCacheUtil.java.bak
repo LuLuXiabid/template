@@ -1,0 +1,733 @@
+package com.changhong.mcc.base.redis;
+
+
+import cn.hutool.core.util.StrUtil;
+import com.alibaba.fastjson.JSON;
+import com.alibaba.fastjson.JSONObject;
+import com.changhong.mcc.base.exception.BaseException;
+import com.fasterxml.jackson.annotation.JsonAutoDetect;
+import com.fasterxml.jackson.annotation.PropertyAccessor;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.redis.connection.RedisConnection;
+import org.springframework.data.redis.core.*;
+import org.springframework.data.redis.serializer.Jackson2JsonRedisSerializer;
+import org.springframework.data.redis.serializer.StringRedisSerializer;
+import org.springframework.stereotype.Component;
+import org.springframework.util.CollectionUtils;
+
+import java.util.Map;
+import java.util.Set;
+import java.util.concurrent.TimeUnit;
+
+/**
+ * RedisCacheUtil <br>
+ *
+ * @author hao.wang <br>
+ * @version 1.0 <br>
+ * @createDate 2020/5/29 13:18 <br>
+ * @see com.changhong.mcc.base.redis <br>
+ */
+@Component
+public class RedisCacheUtil {
+
+    private static StringRedisTemplate stringRedisTemplate;
+
+    private static RedisTemplate<String, Object> redisTemplate;
+
+    @Autowired
+    public void setStringRedisTemplate(StringRedisTemplate stringRedisTemplate) {
+        stringRedisTemplate.setKeySerializer(new StringRedisSerializer());
+        RedisCacheUtil.stringRedisTemplate = stringRedisTemplate;
+    }
+
+    @Autowired
+    public void setRedisTemplate(RedisTemplate redisTemplate) {
+        redisTemplate.setKeySerializer(new StringRedisSerializer());
+        redisTemplate.setHashKeySerializer(new StringRedisSerializer());
+        Jackson2JsonRedisSerializer jackson2JsonRedisSerializer = new Jackson2JsonRedisSerializer(Object.class);
+        ObjectMapper om = new ObjectMapper();
+        om.setVisibility(PropertyAccessor.ALL, JsonAutoDetect.Visibility.ANY);
+        om.enableDefaultTyping(ObjectMapper.DefaultTyping.NON_FINAL);
+        jackson2JsonRedisSerializer.setObjectMapper(om);
+        redisTemplate.setValueSerializer(jackson2JsonRedisSerializer);
+        redisTemplate.setHashValueSerializer(jackson2JsonRedisSerializer);
+        RedisCacheUtil.redisTemplate = redisTemplate;
+    }
+
+    /**
+     * 删除缓存<br>
+     * 根据key精确匹配删除
+     *
+     * @param key <br>
+     */
+    @SuppressWarnings("unchecked")
+    public static void del(String... key) {
+        if (key != null && key.length > 0) {
+            if (key.length == 1) {
+                redisTemplate.delete(key[0]);
+            } else {
+                redisTemplate.delete(CollectionUtils.arrayToList(key));
+            }
+        }
+    }
+
+    /**
+     * 批量删除<br>
+     * （该操作会执行模糊查询，请尽量不要使用，以免影响性能或误删）
+     *
+     * @param pattern <br>
+     */
+    public static void batchDel(String... pattern) {
+        for (String kp : pattern) {
+            redisTemplate.delete(redisTemplate.keys(kp + "*"));
+        }
+    }
+
+    /**
+     * 取得缓存（int型）
+     *
+     * @param key <br>
+     */
+    public static Integer getInt(String key) {
+        Object value = redisTemplate.boundValueOps(key).get();
+        if (value != null) {
+            return Integer.valueOf(value.toString());
+        }
+        return null;
+    }
+
+    /**
+     * 取得缓存（Long型）
+     *
+     * @param key <br>
+     */
+    public static Long getLong(String key) {
+        Object value = redisTemplate.boundValueOps(key).get();
+        if (value != null) {
+            return Long.valueOf(value.toString());
+        }
+        return null;
+    }
+
+    /**
+     * 取得缓存（字符串类型）
+     *
+     * @param key <br>
+     */
+    public static String getStr(String key) {
+        return stringRedisTemplate.boundValueOps(key).get();
+    }
+
+    /**
+     * 取得缓存（字符串类型）
+     *
+     * @param key <br>
+     */
+    public static String getStr(String key, boolean retain) {
+        String value = stringRedisTemplate.boundValueOps(key).get();
+        if (!retain) {
+            redisTemplate.delete(key);
+        }
+        return value;
+    }
+
+    /**
+     * 获取缓存<br>
+     * 注：基本数据类型(Character除外)，请直接使用get(String key, Class<T> clazz)取值
+     *
+     * @param key <br>
+     */
+    public static Object getObj(String key) {
+        return redisTemplate.boundValueOps(key).get();
+    }
+
+    /**
+     * 获取缓存 <br>
+     * 注：java 8种基本类型的数据请直接使用get(String key, Class<T> clazz)取值
+     *
+     * @param key    <br>
+     * @param retain 是否保留
+     */
+    public static Object getObj(String key, boolean retain) {
+        Object obj = redisTemplate.boundValueOps(key).get();
+        if (!retain) {
+            redisTemplate.delete(key);
+        }
+        return obj;
+    }
+
+    /**
+     * 获取缓存<br>
+     * 注：该方法暂不支持Character数据类型
+     *
+     * @param key   key
+     * @param clazz 类型
+     */
+    @SuppressWarnings("unchecked")
+    public static <T> T get(String key, Class<T> clazz) {
+        return (T) redisTemplate.boundValueOps(key).get();
+    }
+
+    /**
+     * 获取缓存json对象<br>
+     *
+     * @param key   key
+     * @param clazz 类型
+     */
+    public static <T> T getJson(String key, Class<T> clazz) {
+        return JSON.parseObject(stringRedisTemplate.boundValueOps(key).get(), clazz);
+    }
+
+    /**
+     * 将value对象写入缓存
+     *
+     * @param key   <br>
+     * @param value <br>
+     * @param time  失效时间(豪秒)
+     */
+    public static void set(String key, Object value, Long time) {
+        if (value.getClass().equals(String.class)) {
+            if (time > 0) {
+                stringRedisTemplate.opsForValue().set(key, value.toString(), time, TimeUnit.MILLISECONDS);
+            } else {
+                stringRedisTemplate.opsForValue().set(key, value.toString());
+            }
+        } else if (value.getClass().equals(Integer.class)) {
+            if (time > 0) {
+                stringRedisTemplate.opsForValue().set(key, value.toString(), time, TimeUnit.MILLISECONDS);
+            } else {
+                stringRedisTemplate.opsForValue().set(key, value.toString());
+            }
+
+        } else if (value.getClass().equals(Double.class)) {
+            if (time > 0) {
+                stringRedisTemplate.opsForValue().set(key, value.toString(), time, TimeUnit.MILLISECONDS);
+            } else {
+                stringRedisTemplate.opsForValue().set(key, value.toString());
+            }
+        } else if (value.getClass().equals(Float.class)) {
+            if (time > 0) {
+                stringRedisTemplate.opsForValue().set(key, value.toString(), time, TimeUnit.MILLISECONDS);
+            } else {
+                stringRedisTemplate.opsForValue().set(key, value.toString());
+            }
+
+        } else if (value.getClass().equals(Short.class)) {
+            if (time > 0) {
+                stringRedisTemplate.opsForValue().set(key, value.toString(), time, TimeUnit.MILLISECONDS);
+            } else {
+                stringRedisTemplate.opsForValue().set(key, value.toString());
+            }
+        } else if (value.getClass().equals(Long.class)) {
+            if (time > 0) {
+                stringRedisTemplate.opsForValue().set(key, value.toString(), time, TimeUnit.MILLISECONDS);
+            } else {
+                stringRedisTemplate.opsForValue().set(key, value.toString());
+            }
+
+        } else if (value.getClass().equals(Boolean.class)) {
+            if (time > 0) {
+                stringRedisTemplate.opsForValue().set(key, value.toString(), time, TimeUnit.MILLISECONDS);
+            } else {
+                stringRedisTemplate.opsForValue().set(key, value.toString());
+            }
+        } else {
+            if (time > 0) {
+                redisTemplate.opsForValue().set(key, value, time, TimeUnit.MILLISECONDS);
+            } else {
+                redisTemplate.opsForValue().set(key, value);
+            }
+
+        }
+
+    }
+
+    /**
+     * 将value对象以JSON格式写入缓存
+     *
+     * @param key   <br>
+     * @param value <br>
+     * @param time  失效时间(毫秒)
+     */
+    public static void setJson(String key, Object value, Long time) {
+        if (time > 0) {
+            stringRedisTemplate.opsForValue().set(key, JSON.toJSONString(value), time, TimeUnit.MILLISECONDS);
+        } else {
+            stringRedisTemplate.opsForValue().set(key, JSON.toJSONString(value));
+        }
+    }
+
+    /**
+     * 更新key对象field的值
+     *
+     * @param key   缓存key
+     * @param field 缓存对象field
+     * @param value 缓存对象field值
+     */
+    public static void setJsonField(String key, String field, String value) {
+        JSONObject obj = JSON.parseObject(stringRedisTemplate.boundValueOps(key).get());
+        obj.put(field, value);
+        stringRedisTemplate.opsForValue().set(key, obj.toJSONString());
+    }
+
+
+    /**
+     * 递减操作 <br>
+     *
+     * @param key <br>
+     * @param by  <br>
+     * @return double <br>
+     * @author hao.wang <br>
+     * @createDate 2020/5/29 13:31 <br>
+     **/
+    public static double decr(String key, double by) {
+        return stringRedisTemplate.opsForValue().increment(key, -by);
+    }
+
+    /**
+     * 递增操作 <br>
+     *
+     * @param key <br>
+     * @param by  <br>
+     * @return double <br>
+     * @author hao.wang <br>
+     * @createDate 2020/5/29 13:31 <br>
+     **/
+    public static double incr(String key, double by) {
+        return stringRedisTemplate.opsForValue().increment(key, by);
+    }
+
+    /**
+     * 递减操作 <br>
+     *
+     * @param key <br>
+     * @param by  <br>
+     * @return long <br>
+     * @author hao.wang <br>
+     * @createDate 2020/5/29 13:30 <br>
+     **/
+    public static long decr(String key, long by) {
+        return stringRedisTemplate.opsForValue().increment(key, -by);
+    }
+
+    /**
+     * 递增操作 <br>
+     *
+     * @param key <br>
+     * @param by  <br>
+     * @return long <br>
+     * @author hao.wang <br>
+     * @createDate 2020/5/29 13:30 <br>
+     **/
+    public static long incr(String key, long by) {
+        return stringRedisTemplate.opsForValue().increment(key, by);
+    }
+
+    /**
+     * 自增操作，同时可设置失效时间 <br>
+     *
+     * @param key, by, timeOut, timeUnit<br>
+     * @return long <br>
+     * @author hao.wang <br>
+     * @createDate 2019/3/22 14:09<br>
+     **/
+    public static long incr(String key, long by, long timeOut, TimeUnit timeUnit) {
+        long l = stringRedisTemplate.opsForValue().increment(key, by);
+        stringRedisTemplate.expire(key, timeOut, timeUnit);
+        return l;
+    }
+
+    /**
+     * 获取double类型值 <br>
+     *
+     * @param key <br>
+     * @return double <br>
+     * @author hao.wang <br>
+     * @createDate 2020/5/29 13:29 <br>
+     **/
+    public static double getDouble(String key) {
+        String value = stringRedisTemplate.boundValueOps(key).get();
+        if (StrUtil.isNotBlank(value)) {
+            return Double.valueOf(value);
+        }
+        return 0d;
+    }
+
+    /**
+     * 设置double类型值
+     *
+     * @param key   <br>
+     * @param value <br>
+     * @param time  失效时间(毫秒)
+     */
+    public static void setDouble(String key, double value, Long time) {
+        if (time > 0) {
+            stringRedisTemplate.opsForValue().set(key, String.valueOf(value), time, TimeUnit.MILLISECONDS);
+        } else {
+            stringRedisTemplate.opsForValue().set(key, String.valueOf(value));
+        }
+    }
+
+    /**
+     * 设置double类型值
+     *
+     * @param key   <br>
+     * @param value <br>
+     * @param time  失效时间(毫秒)
+     */
+    public static void setInt(String key, int value, Long time) {
+        if (time > 0) {
+            stringRedisTemplate.opsForValue().set(key, String.valueOf(value), time, TimeUnit.MILLISECONDS);
+        } else {
+            stringRedisTemplate.opsForValue().set(key, String.valueOf(value));
+        }
+    }
+
+    /**
+     * 将map写入缓存
+     *
+     * @param key  <br>
+     * @param map  <br>
+     * @param time 失效时间(毫秒)
+     */
+    public static <T> void setMap(String key, Map<String, T> map, Long time) {
+        redisTemplate.opsForHash().putAll(key, map);
+        if (time > 0) {
+            redisTemplate.expire(key, time, TimeUnit.MILLISECONDS);
+        }
+    }
+
+    /**
+     * 向key对应的map中添加缓存对象 <br>
+     *
+     * @param key <br>
+     * @param map <br>
+     * @author hao.wang <br>
+     * @createDate 2020/5/29 13:28 <br>
+     **/
+    public static <T> void addMap(String key, Map<String, T> map) {
+        redisTemplate.opsForHash().putAll(key, map);
+    }
+
+    /**
+     * 向key对应的map中添加缓存对象
+     *
+     * @param key   cache对象key
+     * @param field map对应的key
+     * @param value 值
+     */
+    public static void addMap(String key, String field, String value) {
+        redisTemplate.opsForHash().put(key, field, value);
+    }
+
+    /**
+     * 向key对应的map中添加缓存对象
+     *
+     * @param key   cache对象key
+     * @param field map对应的key
+     * @param obj   对象
+     */
+    public static <T> void addMap(String key, String field, T obj) {
+        redisTemplate.opsForHash().put(key, field, obj);
+    }
+
+    /**
+     * 获取map缓存 <br>
+     *
+     * @param key   <br>
+     * @param clazz <br>
+     * @return java.util.Map<java.lang.String, T> <br>
+     * @author hao.wang <br>
+     * @createDate 2020/5/29 13:28 <br>
+     **/
+    public static <T> Map<String, T> mget(String key, Class<T> clazz) {
+        BoundHashOperations<String, String, T> boundHashOperations = redisTemplate.boundHashOps(key);
+        return boundHashOperations.entries();
+    }
+
+    /**
+     * scan <br>
+     *
+     * @param pattern <br>
+     * @return org.springframework.data.redis.core.Cursor <br>
+     * @author hao.wang <br>
+     * @createDate 2020/5/29 13:28 <br>
+     **/
+    public static Cursor scan(String pattern) {
+        ScanOptions scanOptions = ScanOptions.scanOptions().match(pattern).count(Integer.MAX_VALUE).build();
+        RedisConnection connection = redisTemplate.getConnectionFactory().getConnection();
+        Cursor cursor;
+        try {
+            cursor = connection.scan(scanOptions);
+        } catch (Exception e) {
+            throw new BaseException("redis查询异常!");
+        } finally {
+            connection.close();
+        }
+        return cursor;
+    }
+
+
+    /**
+     * 获取map缓存中的某个对象 <br>
+     *
+     * @param key   <br>
+     * @param field <br>
+     * @param clazz <br>
+     * @return T <br>
+     * @author hao.wang <br>
+     * @createDate 2020/5/29 13:27 <br>
+     **/
+    @SuppressWarnings("unchecked")
+    public static <T> T getMapField(String key, String field, Class<T> clazz) {
+        return (T) redisTemplate.boundHashOps(key).get(field);
+    }
+
+    /**
+     * 删除map中的某个对象
+     *
+     * @param key   map对应的key
+     * @param field map中该对象的key
+     * @author lh
+     * @date 2016年8月10日
+     */
+    public void delMapField(String key, String... field) {
+        BoundHashOperations<String, String, ?> boundHashOperations = redisTemplate.boundHashOps(key);
+        boundHashOperations.delete(field);
+    }
+
+    /**
+     * 指定缓存的失效时间
+     *
+     * @param key  缓存KEY
+     * @param time 失效时间(秒)
+     * @author FangJun
+     * @date 2016年8月14日
+     */
+    public static void expire(String key, Long time) {
+        if (time > 0) {
+            redisTemplate.expire(key, time, TimeUnit.MILLISECONDS);
+        }
+    }
+
+    /**
+     * 删除set集合中的对象 <br>
+     *
+     * @param key   <br>
+     * @param value <br>
+     * @author hao.wang <br>
+     * @createDate 2020/5/29 13:26 <br>
+     **/
+    public static void srem(String key, String... value) {
+        redisTemplate.boundSetOps(key).remove(value);
+    }
+
+    /**
+    * sMembers <br>
+    *
+    * @param key <br>
+    * @return java.util.Set<T> <br>
+    * @author hao.wang <br>
+    * @createDate 2020/5/29 13:33 <br>
+    **/
+    public static <T> Set<T> sMembers(String key) {
+        return (Set<T>) redisTemplate.opsForSet().members(key);
+    }
+
+    /**
+     * set重命名 <br>
+     *
+     * @param oldkey <br>
+     * @param newkey <br>
+     * @author hao.wang <br>
+     * @createDate 2020/5/29 13:26 <br>
+     **/
+    public static void srename(String oldkey, String newkey) {
+        redisTemplate.boundSetOps(oldkey).rename(newkey);
+    }
+
+    /**
+     * isMembers <br>
+     *
+     * @param key <br>
+     * @param o   <br>
+     * @return java.lang.Boolean <br>
+     * @author hao.wang <br>
+     * @createDate 2020/5/29 13:26 <br>
+     **/
+    public static Boolean isMembers(String key, Object o) {
+        return redisTemplate.opsForSet().isMember(key, o);
+    }
+
+
+    /**
+     * 模糊查询keys <br>
+     *
+     * @param pattern <br>
+     * @return java.util.Set<java.lang.String> <br>
+     * @author hao.wang <br>
+     * @createDate 2020/5/29 13:26 <br>
+     **/
+    public static Set<String> keys(String pattern) {
+        return redisTemplate.keys(pattern);
+    }
+
+    /**
+    * hasKey <br>
+    *
+    * @param key <br>
+    * @return java.lang.Boolean <br>
+    * @author hao.wang <br>
+    * @createDate 2020/5/29 13:33 <br>
+    **/
+    public static Boolean hasKey(String key) {
+        return redisTemplate.hasKey(key);
+    }
+
+    /**
+     * 向一张hash表中放入数据,如果不存在将创建
+     *
+     * @param key   键
+     * @param item  项
+     * @param value 值
+     * @return true 成功 false失败
+     */
+    public static boolean hset(String key, String item, Object value) {
+        try {
+            redisTemplate.opsForHash().put(key, item, value);
+            return true;
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    /**
+     * 向一张hash表中放入数据,如果不存在将创建
+     *
+     * @param key   键
+     * @param item  项
+     * @param value 值
+     * @param time  时间(秒)  注意:如果已存在的hash表有时间,这里将会替换原有的时间
+     * @return true 成功 false失败
+     */
+    public static boolean hset(String key, String item, Object value, long time) {
+        try {
+            redisTemplate.opsForHash().put(key, item, value);
+            if (time > 0) {
+                expire(key, time);
+            }
+            return true;
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    /**
+     * 删除hash表中的值
+     *
+     * @param key  键 不能为null
+     * @param item 项 可以使多个 不能为null
+     */
+    public static boolean hdel(String key, Object... item) {
+        try {
+            redisTemplate.opsForHash().delete(key, item);
+            return true;
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    /**
+     * 判断hash表中是否有该项的值
+     *
+     * @param key  键 不能为null
+     * @param item 项 不能为null
+     * @return true 存在 false不存在
+     */
+    public static boolean hHasKey(String key, String item) {
+        return redisTemplate.opsForHash().hasKey(key, item);
+    }
+
+    /**
+     * HashGet <br>
+     *
+     * @param key  键 不能为null
+     * @param item 项 不能为null
+     * @return java.lang.Object <br>
+     * @author hao.wang <br>
+     * @createDate 2020/5/29 13:25 <br>
+     **/
+    public static Object hget(String key, String item) {
+        return redisTemplate.opsForHash().get(key, item);
+    }
+
+    /**
+     * hmget 获取hashKey对应的所有键值 <br>
+     *
+     * @param key <br>
+     * @return java.util.Map<java.lang.Object, java.lang.Object> <br>
+     * @author hao.wang <br>
+     * @createDate 2020/5/29 13:24 <br>
+     **/
+    public static Map<Object, Object> hmget(String key) {
+        return redisTemplate.opsForHash().entries(key);
+    }
+
+    /**
+     * hincr hash递增 如果不存在,就会创建一个 并把新增后的值返回 <br>
+     *
+     * @param key  键
+     * @param item 项
+     * @param by   要增加几(大于0)
+     * @return long <br>
+     * @author hao.wang <br>
+     * @createDate 2020/5/29 13:21 <br>
+     **/
+    public static long hincr(String key, String item, long by) {
+        return redisTemplate.opsForHash().increment(key, item, by);
+    }
+
+    /**
+     * hdecr hash递减 <br>
+     *
+     * @param key  键
+     * @param item 项
+     * @param by   要减少记(小于0)
+     * @return long <br>
+     * @author hao.wang <br>
+     * @createDate 2020/5/29 13:21 <br>
+     **/
+    public static long hdecr(String key, String item, long by) {
+        return redisTemplate.opsForHash().increment(key, item, -by);
+    }
+
+
+    /**
+     * hlengh hash大小 <br>
+     *
+     * @param key <br>
+     * @return long <br>
+     * @author hao.wang <br>
+     * @createDate 2020/5/29 13:21 <br>
+     **/
+    public static long hlengh(String key) {
+        return redisTemplate.opsForHash().size(key);
+    }
+
+
+    /**
+     * hgetJson <br>
+     *
+     * @param key   <br>
+     * @param item  <br>
+     * @param clazz <br>
+     * @return T <br>
+     * @author hao.wang <br>
+     * @createDate 2020/5/29 13:20 <br>
+     **/
+    public static <T> T hgetJson(String key, String item, Class<T> clazz) {
+        String str = (String) hget(key, item);
+        return JSON.parseObject(str, clazz);
+    }
+}
