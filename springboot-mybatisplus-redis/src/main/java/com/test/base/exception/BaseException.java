@@ -1,14 +1,15 @@
 package com.test.base.exception;
 
 
-/**
- * BaseException <br>
- *
- * @author hao.wang <br>
- * @version 1.0 <br>
- * @createDate 2020/5/29 11:17 <br>
- * @see com.changhong.mcc.base.exception <br>
- */
+/*
+* Description <br> 
+*
+* @param null <br>  
+* @return  <br>
+* @throws Exception <br>
+* @author lixiao <br>
+* @createDate 2021/12/10 15:40 <br>
+**/
 public class BaseException extends RuntimeException {
 
     private static final long serialVersionUID = -8551490277923253052L;

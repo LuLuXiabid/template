@@ -15,6 +15,7 @@ public class DemoApplicationTests {
 
 	@Autowired
 	private UserService userService;
+
 	@Test
 	public void contextLoads() {
 		User sel = userService.Sel(1);

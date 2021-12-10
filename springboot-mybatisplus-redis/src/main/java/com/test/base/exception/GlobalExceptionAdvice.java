@@ -18,6 +18,14 @@ import javax.validation.ConstraintViolationException;
 @ControllerAdvice
 public class GlobalExceptionAdvice {
 
+
+    @ExceptionHandler(BaseException.class)
+    @ResponseBody
+    public ResponseEntity<JSONObject> handleBaseException(BaseException e) {
+        log.error("业务异常！" + e.getMessage(), e);
+        return ResponseUtil.badRequest(e.getMessage());
+    }
+
     @ExceptionHandler(Exception.class)
     @ResponseBody
     public ResponseEntity<JSONObject> handleBaseException(Exception e) {
