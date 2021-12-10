@@ -8,5 +8,14 @@
     <artifactId>template</artifactId>
     <version>1.0-SNAPSHOT</version>
 
-    
+    <modules>
+        <module>spring-web</module>
+        <module>springboot-elasticsearch</module>
+        <module>springboot-mybatis</module>
+        <module>springboot-mybatisplus-redis</module>
+        <module>springboot-rabbitmq</module>
+        <module>springboot-scaffold</module>
+        <module>springboot-template</module>
+    </modules>
+
 </project>
